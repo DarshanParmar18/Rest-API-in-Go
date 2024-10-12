@@ -1,22 +1,100 @@
 package models
 
-import "time"
+import (
+	"project/rest_api/db"
+	"time"
+)
 
 type Event struct {
-	ID          int
+	ID          int64
 	Name        string `binding:"required"`
 	Description string 
 	Location    string 
 	DateTime    time.Time 
-	UserID int
-}
-var events =[]Event{}
-
-func (e Event)Save()  {
-	// later to add it to a database
-	events  = append(events, e)
+	UserID int64
 }
 
-func GetAllEvents() []Event {
-	return events
+func (e *Event)Save() error {
+	query := `
+	INSERT INTO events(name,description,location,dateTime,user_id)
+	VALUES (?,?,?,?,?)`
+
+	stmt,err:=db.DB.Prepare(query) // Prepare() prepares a SQL statemant. Alternatively, you could also directly execute a statement via Exec(). But Prepare() can lead to better performance in certain situations.
+	if err!=nil {
+		return err
+	}
+	defer stmt.Close()
+	res,err:=stmt.Exec(e.Name,e.Description,e.Location,e.DateTime,e.UserID)
+	if err!=nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	e.ID = id
+	return err
+}
+
+
+// --------------------------Get All Events
+func GetAllEvents() ([]Event,error) {
+	query := "SELECT * FROM events"
+	rows,err := db.DB.Query(query)
+	if err!=nil {
+		return nil,err
+	}
+	defer rows.Close()
+
+	var events []Event
+
+	for rows.Next(){
+		var event Event
+		err:=rows.Scan(&event.ID,&event.Name,&event.Description,&event.Location,&event.DateTime,&event.UserID)
+		if err!=nil {
+			return nil,err
+		}
+		events = append(events, event)
+	}
+
+	return events,nil
+}
+
+// -----------------------Get single Event----------------------
+func GetEvent(id int64) (*Event,error) {
+	query := `SELECT * FROM events WHERE id = ?`
+
+	row := db.DB.QueryRow(query,id)
+
+	var event Event
+	err:=row.Scan(&event.ID,&event.Name,&event.Description,&event.Location,&event.DateTime,&event.UserID)
+	if err != nil {
+		return nil,err
+	}
+	return &event,nil
+}
+
+
+// --------------------------Update Event-----------------
+func (event Event)Update() error {
+	query:= `
+	UPDATE events
+	SET name = ?, description = ?, location = ?, dateTime = ?
+	WHERE id = ?
+	`
+	stmt, err := db.DB.Prepare(query)
+	if err != nil {
+		return err
+	}
+
+	_,err = stmt.Exec(event.Name,event.Description,event.Location,event.DateTime,event.ID)
+
+	return err
+}
+
+// -----------------------Delete Event-----------------
+func Delete(id int64) error {
+	query := `
+	DELETE From events WHERE ID = ?
+	`
+	_, err := db.DB.Exec(query,id)
+	return err
+
 }
